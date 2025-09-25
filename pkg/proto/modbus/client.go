@@ -16,6 +16,15 @@ import (
 	"github.com/pdat-cz/pc/pkg/proto"
 )
 
+const (
+	fcReadHolding   = 0x03
+	fcReadInput     = 0x04
+	fcWriteSingle   = 0x06
+	mbapHeaderLen   = 7
+	modbusProtoID   = 0
+	minRegisterRead = 1
+)
+
 type Client struct {
 	mu      sync.Mutex
 	netw    string
@@ -75,15 +84,11 @@ func (c *Client) Read(ctx context.Context, specs []proto.ReadSpec) ([]proto.Valu
 		)
 		switch s.Kind {
 		case proto.Holding:
-			fc = 0x03
-			if count == 0 {
-				count = 1
-			}
+			fc = fcReadHolding
+			count = ensureReadCount(count)
 		case proto.Input:
-			fc = 0x04
-			if count == 0 {
-				count = 1
-			}
+			fc = fcReadInput
+			count = ensureReadCount(count)
 		default:
 			return nil, fmt.Errorf("unsupported kind for read: %s", s.Kind)
 		}
@@ -114,6 +119,14 @@ func (c *Client) Write(ctx context.Context, spec proto.ReadSpec, val any) error 
 	default:
 		return fmt.Errorf("unsupported kind for write: %s", spec.Kind)
 	}
+}
+
+// ensureReadCount normalizes read count to at least one register.
+func ensureReadCount(count uint16) uint16 {
+	if count == 0 {
+		return minRegisterRead
+	}
+	return count
 }
 
 func (c *Client) readRegisters(ctx context.Context, function byte, addr uint16, count uint16) ([]byte, error) {
@@ -148,14 +161,14 @@ func (c *Client) readRegisters(ctx context.Context, function byte, addr uint16, 
 
 func (c *Client) writeSingleRegister(ctx context.Context, addr uint16, value uint16) error {
 	pdu := make([]byte, 5)
-	pdu[0] = 0x06
+	pdu[0] = fcWriteSingle
 	binary.BigEndian.PutUint16(pdu[1:], addr)
 	binary.BigEndian.PutUint16(pdu[3:], value)
 	resp, err := c.exchange(ctx, pdu)
 	if err != nil {
 		return err
 	}
-	if len(resp) < 5 || resp[0] != 0x06 {
+	if len(resp) < 5 || resp[0] != fcWriteSingle {
 		return fmt.Errorf("unexpected write response")
 	}
 	// echo of addr+value expected
@@ -174,9 +187,9 @@ func (c *Client) exchange(ctx context.Context, pdu []byte) ([]byte, error) {
 
 	// Build MBAP + PDU
 	tid := c.nextTID()
-	head := make([]byte, 7)
+	head := make([]byte, mbapHeaderLen)
 	binary.BigEndian.PutUint16(head[0:], tid)
-	binary.BigEndian.PutUint16(head[2:], 0) // protocol id
+	binary.BigEndian.PutUint16(head[2:], modbusProtoID) // protocol id
 	// length = unit id + pdu length
 	binary.BigEndian.PutUint16(head[4:], uint16(1+len(pdu)))
 	head[6] = unit
@@ -186,12 +199,12 @@ func (c *Client) exchange(ctx context.Context, pdu []byte) ([]byte, error) {
 		return nil, err
 	}
 	// Read header
-	headBuf := make([]byte, 7)
+	headBuf := make([]byte, mbapHeaderLen)
 	if _, err := readFullWithCtx(ctx, conn, headBuf); err != nil {
 		return nil, err
 	}
 	// check protocol id
-	if binary.BigEndian.Uint16(headBuf[2:4]) != 0 {
+	if binary.BigEndian.Uint16(headBuf[2:4]) != modbusProtoID {
 		return nil, errors.New("invalid protocol id")
 	}
 	ln := binary.BigEndian.Uint16(headBuf[4:6])

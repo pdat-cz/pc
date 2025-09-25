@@ -9,7 +9,7 @@ import (
 )
 
 // App runs a minimal dual-pane TUI skeleton.
-func App() error {
+func App(version string) error {
 	app := tview.NewApplication()
 	left := tview.NewList()
 	left.SetBorder(true).SetTitle("Devices / Bookmarks")
@@ -23,7 +23,10 @@ func App() error {
 
 	status := tview.NewTextView().SetDynamicColors(true)
 	status.SetBorder(true).SetTitle("Status")
-	_, _ = fmt.Fprintf(status, "[green]p.d.a. commander[-]  %s", time.Now().Format(time.RFC3339))
+	if version == "" {
+		version = "dev"
+	}
+	_, _ = fmt.Fprintf(status, "[green]p.d.a. commander[-]  v%s  %s", version, time.Now().Format(time.RFC3339))
 
 	log := tview.NewTextView().SetDynamicColors(true)
 	log.SetBorder(true).SetTitle("Log (F2)")
