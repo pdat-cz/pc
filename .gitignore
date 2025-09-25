@@ -1,0 +1,74 @@
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+
+# Test/coverage outputs
+*.out
+*.coverprofile
+coverage.txt
+coverage.html
+profile.out
+*.pprof
+*.prof
+
+# Go module workspace files (not typically committed)
+go.work
+go.work.sum
+
+# Binaries and build directories for CLI/TUI apps
+bin/
+build/
+dist/
+release/
+out/
+debug/
+.tmp/
+tmp/
+temp/
+
+# Go compiler and tool caches
+.gocache/
+.go/
+.cache/
+
+# Logs
+*.log
+logs/
+
+# Environment/config overrides
+.env
+.env.*.local
+*.local.yaml
+*.local.yml
+*.local.json
+
+# Common packaging/release tools
+artifacts/
+# GoReleaser default output
+# https://goreleaser.com
+/dist/
+
+# Editor/IDE
+.idea/
+.vscode/
+*.code-workspace
+*.iml
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+
+# Swap/temp editor files
+*.swp
+*~
+
+# Optional vendored dependencies (uncomment if you do NOT commit vendor)
+# vendor/
+
+# Project-specific caches that some TUI libs may create (safe to ignore if present)
+.termui/
+.tview/

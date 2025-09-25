@@ -1,0 +1,28 @@
+dist: dist
+project_name: pc
+
+builds:
+  - id: pc
+    main: ./cmd/pc
+    binary: pc
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+
+archives:
+  - id: tgz
+    format: tar.gz
+    name_template: '{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}'
+    files:
+      - LICENSE
+      - README.adoc
+
+checksum:
+  name_template: 'SHA256SUMS'
+  algorithm: sha256
+  # individual: true  # uncomment if you also want per-asset .sha256 files
+
+release:
+  draft: false
+  prerelease: auto

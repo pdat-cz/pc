@@ -1,0 +1,205 @@
+= pc — p.d.a. commander
+
+A tiny command‑line and TUI helper for working with fieldbus protocols. The first supported backend is Modbus TCP.
+
+This tool lets you quickly read and write device points using a simple, compact addressing syntax and a URI that selects the protocol/transport.
+
+== Status
+
+Prototype/alpha. The CLI is usable for quick reads/writes. The TUI is a minimal skeleton.
+
+== Install
+
+=== Quick install (Linux/macOS)
+
+Install the latest release to /usr/local/bin/pc:
+
+  curl -fsSL https://raw.githubusercontent.com/pdat-cz/pc/main/install.sh | sudo sh
+
+Install a specific version (e.g., v0.1.0):
+
+  curl -fsSL https://raw.githubusercontent.com/pdat-cz/pc/main/install.sh | sudo sh -s -- v0.1.0
+
+After install:
+
+  pc -h
+
+Notes:
+
+- The script downloads a prebuilt archive for your OS/arch from GitHub Releases, verifies its SHA256 checksum, and installs the pc binary.
+- sudo is required to write to /usr/local/bin.
+- Supported OS/arch: linux/darwin on amd64 and arm64 (more may be added over time).
+
+=== Alternative: build from source
+
+Requires Go 1.21+.
+
+- From source:
+  $ git clone <this-repo-url>
+  $ cd pc
+  $ go build -o pc ./cmd/pc
+  This will create a binary named `pc` in the current directory.
+
+- With go install (module is public):
+  $ go install github.com/pdat-cz/pc/cmd/pc@latest
+
+=== Uninstall
+
+If installed to /usr/local/bin:
+
+  sudo rm -f /usr/local/bin/pc
+
+== Synopsis
+
+  pc cat <uri> <addr> [addr...]
+  pc set <uri> <addr=value> [addr=value...]
+  pc tui
+
+Examples:
+
+  pc cat modbus+tcp://127.0.0.1:502?unit=1 holding/1 holding/2@u16
+  pc set modbus+tcp://127.0.0.1:502?unit=1 holding/10@u16=1234
+
+== Protocol URI
+
+Currently only Modbus TCP is supported. The URI format is:
+
+  modbus+tcp://HOST:PORT?unit=UNIT&timeout=GoDuration
+
+Parameters:
+
+- unit: Modbus Unit ID (aka slave id). Default: 1.
+- timeout: overall request timeout per operation. Go duration format, e.g. `2s`, `500ms`. Default: 3s.
+
+Examples:
+
+- modbus+tcp://192.168.1.50:502?unit=1
+- modbus+tcp://plc.local:1502?unit=10&timeout=2s
+
+== Address syntax
+
+General form:
+
+  KIND/ADDR[:COUNT][@FORMAT]
+
+Where:
+
+- KIND is one of: `coil`, `discrete`, `holding`, `input`.
+- ADDR is a 0‑based register/bit address (decimal).
+- COUNT is optional read count (registers). If omitted, defaults to 1 where applicable.
+- FORMAT is optional decode hint for returned bytes.
+
+Notes:
+
+- Reads: implemented for `holding` and `input` registers.
+- Writes: implemented for single `holding` register (function 0x06) only.
+
+Supported FORMAT values (for decoding reads):
+
+- u16, s16
+- u32, s32
+- f32be, f32le
+
+If FORMAT is omitted, raw bytes are returned (as hex in JSON), and `decoded` is empty.
+
+== Commands
+
+=== cat — read values
+
+Reads one or more addresses and prints a JSON line per value.
+
+Example:
+
+  pc cat modbus+tcp://127.0.0.1:502?unit=1 \
+    holding/1 holding/2:2 holding/10@u16 input/0@f32be
+
+Each output line is a JSON object with fields:
+
+- spec: the original ReadSpec (kind/addr/count/format)
+- bytes: raw bytes
+- decoded: best‑effort decoded value when FORMAT was provided
+- ts: timestamp
+
+=== set — write value(s)
+
+Writes value(s) to the device. Currently supports a single holding register per pair.
+
+Syntax:
+
+  pc set <uri> <addr=value> [addr=value...]
+
+Example:
+
+  pc set modbus+tcp://127.0.0.1:502?unit=1 holding/10@u16=1234
+
+Notes:
+
+- Only `holding` is supported for writes now.
+- The value is interpreted according to the address FORMAT when provided. For single‑register write, u16 is expected.
+
+=== tui — minimal terminal UI
+
+Starts a very simple dual‑pane TUI skeleton intended to evolve into a device/points browser.
+
+Shortcuts:
+
+- q — quit
+- F10 — quit
+
+== Building and development
+
+- Go modules are used. See `go.mod`.
+- TUI uses github.com/rivo/tview.
+
+== Caveats and roadmap
+
+- Only Modbus TCP is implemented right now.
+- Reads: holding/input; Coils/discretes not yet implemented.
+- Writes: only 0x06 (single holding register).
+- Error handling and retries are basic.
+- TUI is a placeholder skeleton.
+
+Planned:
+
+- Add coils/discretes read/write.
+- More decode/encode formats and endianness options.
+- Better TUI with device/bookmarks, polling, and editing.
+
+== License
+
+MIT License. See LICENSE.
+
+
+=== Developer workflow (automated releases)
+
+- Use Conventional Commits in PR titles/commit messages, e.g.:
+  - feat: add coils read support
+  - fix(tui): prevent crash when no device selected
+- Optional: install a local git hook to validate commit messages:
+  $ sh scripts/setup-git-hooks.sh
+- CI builds/tests run on pushes and PRs.
+- Releases are automated:
+  1. Merge PRs normally using Conventional Commits.
+  2. The release-please workflow will open a “Release PR” with the next version and CHANGELOG.
+  3. Merge that Release PR; a GitHub Release and tag will be created automatically.
+  4. The release-build workflow runs GoReleaser, which uploads pc_<os>_<arch>.tar.gz and SHA256SUMS.
+  5. Users can install/upgrade via the one-liner install.sh.
+
+==== Publishing a patch release (step-by-step)
+
+If you need to publish a new patch (x.y.Z → x.y.(Z+1)) using the existing automation:
+
+1. Make only patch-safe changes and use Conventional Commits with a non-breaking type, e.g. `fix: ...`, `docs: ...`, `chore: ...`, `ci: ...`.
+2. Open a PR and get it merged into `main` (or push directly if appropriate).
+3. Wait ~1–2 minutes; the "release-please" GitHub Action will create or update a "Release PR" that bumps the patch version and includes a CHANGELOG.
+4. Review the Release PR content (version and notes). If all good, click Merge on the Release PR.
+5. Upon merge, a Git tag and GitHub Release are created automatically.
+6. The "release-build" workflow runs GoReleaser to build and upload archives and checksums to that Release.
+7. Verify the Release assets and that the install script works for the new version:
+   - Install latest: `curl -fsSL https://raw.githubusercontent.com/pdat-cz/pc/main/install.sh | sudo sh`
+   - Or a specific tag: `... | sudo sh -s -- vX.Y.Z`
+
+Notes:
+- If you push more commits before merging the Release PR, release-please will update it and may keep it open until you merge it.
+- If there are only chores/docs/ci changes, the version bump remains a patch by default.
+- No manual tagging is needed; let the automation handle it.
