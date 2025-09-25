@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6](https://github.com/pdat-cz/pc/compare/v0.1.5...v0.1.6) (2025-09-25)
+
+
+### Bug Fixes
+
+* actions ([183fed4](https://github.com/pdat-cz/pc/commit/183fed4360b82c49770a56b195d16d2fc2052933))
+
 ## [0.1.5](https://github.com/pdat-cz/pc/compare/v0.1.4...v0.1.5) (2025-09-25)
 
 
