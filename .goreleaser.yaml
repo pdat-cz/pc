@@ -1,29 +1,36 @@
-dist: dist
-project_name: pc
+on:
+  push:
+    tags:
+      - 'v*'        # standard: v0.1.5
+      - '*'         # ALSO support legacy tags like 0.1.5
 
-builds:
-  - id: pc
-    main: ./cmd/pc
-    binary: pc
-    env:
-      - CGO_ENABLED=0
-    goos: [linux, darwin]
-    goarch: [amd64, arm64]
-    ldflags:
-      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+build:
+  runs-on: ubuntu-latest
+  permissions:
+    contents: read
+    packages: write
+    id-token: write
 
-archives:
-  - id: tgz
-    format: tar.gz
-    name_template: '{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}'
-    files:
-      - LICENSE
-      - README.adoc
+  concurrency:
+    group: release-${{ github.ref }}
+    cancel-in-progress: false
 
-checksum:
-  name_template: 'SHA256SUMS'
-  algorithm: sha256
+  steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        fetch-tags: true
 
-release:
-  draft: false
-  prerelease: auto
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.19'
+
+    - name: Run GoReleaser
+      uses: goreleaser/goreleaser-action@v2
+      with:
+        version: latest
+        args: release --rm-dist
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

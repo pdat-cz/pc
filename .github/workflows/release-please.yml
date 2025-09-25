@@ -9,6 +9,10 @@ permissions:
   contents: write
   pull-requests: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release-please:
     runs-on: ubuntu-latest
@@ -17,4 +21,5 @@ jobs:
         uses: googleapis/release-please-action@v4
         with:
           release-type: go
+          include-v-in-tag: true
           # optional: set "token" if using a PAT; defaults to GITHUB_TOKEN
