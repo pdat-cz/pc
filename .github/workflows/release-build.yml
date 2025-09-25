@@ -5,8 +5,7 @@ on:
     tags:
       - 'v*'
   release:
-    types: [published]
-  workflow_dispatch:
+    types: [ published ]
 
 permissions:
   contents: write

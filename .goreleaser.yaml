@@ -23,7 +23,6 @@ archives:
 checksum:
   name_template: 'SHA256SUMS'
   algorithm: sha256
-  # individual: true  # uncomment if you also want per-asset .sha256 files
 
 release:
   draft: false
