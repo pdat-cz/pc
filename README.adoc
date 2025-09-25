@@ -14,11 +14,11 @@ Prototype/alpha. The CLI is usable for quick reads/writes. The TUI is a minimal 
 
 Install the latest release to /usr/local/bin/pc:
 
-  curl -fsSL https://raw.githubusercontent.com/pdat-cz/pc/main/install.sh | sudo sh
+  curl -fsSL https://raw.githubusercontent.com/pdat-cz/pc/main/install.sh | sudo bash
 
 Install a specific version (e.g., v0.1.0):
 
-  curl -fsSL https://raw.githubusercontent.com/pdat-cz/pc/main/install.sh | sudo sh -s -- v0.1.0
+  curl -fsSL https://raw.githubusercontent.com/pdat-cz/pc/main/install.sh | sudo bash -s -- v0.1.0
 
 After install:
 
@@ -196,8 +196,8 @@ If you need to publish a new patch (x.y.Z → x.y.(Z+1)) using the existing auto
 5. Upon merge, a Git tag and GitHub Release are created automatically.
 6. The "release-build" workflow runs GoReleaser to build and upload archives and checksums to that Release.
 7. Verify the Release assets and that the install script works for the new version:
-   - Install latest: `curl -fsSL https://raw.githubusercontent.com/pdat-cz/pc/main/install.sh | sudo sh`
-   - Or a specific tag: `... | sudo sh -s -- vX.Y.Z`
+   - Install latest: `curl -fsSL https://raw.githubusercontent.com/pdat-cz/pc/main/install.sh | sudo bash`
+   - Or a specific tag: `... | sudo bash -s -- vX.Y.Z`
 
 Notes:
 - If you push more commits before merging the Release PR, release-please will update it and may keep it open until you merge it.
