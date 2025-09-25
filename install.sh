@@ -1,8 +1,8 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 # Installer for pdat-cz/pc
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/pdat-cz/pc/main/install.sh | sudo sh
-#   curl -fsSL https://raw.githubusercontent.com/pdat-cz/pc/main/install.sh | sudo sh -s -- v0.1.0
+#   curl -fsSL https://raw.githubusercontent.com/pdat-cz/pc/main/install.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/pdat-cz/pc/main/install.sh | sudo bash -s -- v0.1.0
 set -euo pipefail
 
 REPO="pdat-cz/pc"
@@ -74,7 +74,7 @@ checksum() {
 
 if [ -n "$SUMS_URL" ]; then
   echo "Verifying checksum via SHA256SUMS"
-  SUMS_PATH="$TMPDIR/SHA256SUMS.txt"
+  SUMS_PATH="$TMPDIR/SHA256SUMS"
   curl -fsSL "$SUMS_URL" -o "$SUMS_PATH"
   EXPECTED=$(grep "[[:space:]]$ASSET$" "$SUMS_PATH" | awk '{print $1}') || true
   if [ -z "${EXPECTED:-}" ]; then
