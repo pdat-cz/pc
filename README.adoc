@@ -1,0 +1,572 @@
+= pc — p.d.a. commander
+
+A tiny command‑line helper for working with fieldbus protocols.
+Supports Modbus TCP and Modbus RTU. Wired M‑Bus (EN 13757-2/-3) basic reads are available with minimal dependencies.
+
+This tool lets you quickly read and write device points using a simple, compact addressing syntax and a URI that selects the protocol/transport.
+
+== Status
+
+Prototype/alpha.
+The CLI is usable for quick reads/writes.
+
+== Install
+
+=== Quick install (Linux/macOS)
+
+Install the latest release to /usr/local/bin/pc:
+
+  curl -fsSL https://raw.githubusercontent.com/pdat-cz/pc/main/install.sh | sudo bash
+
+Install a specific version (e.g., v0.1.0):
+
+  curl -fsSL https://raw.githubusercontent.com/pdat-cz/pc/main/install.sh | sudo bash -s -- v0.1.0
+
+After install:
+
+  pc -h
+
+Notes:
+
+- The script downloads a prebuilt archive for your OS/arch from GitHub Releases, verifies its SHA256 checksum, and installs the pc binary.
+- sudo is required to write to /usr/local/bin.
+- Supported OS/arch: linux/darwin on amd64 and arm64 (more may be added over time).
+
+=== Alternative: build from source
+
+Requires Go 1.21+.
+
+- From source:
+$ git clone <this-repo-url> $ cd pc $ go build -o pc ./cmd/pc This will create a binary named `pc` in the current directory.
+
+- With go install (module is public):
+$ go install github.com/pdat-cz/pc/cmd/pc@latest
+
+=== Uninstall
+
+If installed to /usr/local/bin:
+
+  sudo rm -f /usr/local/bin/pc
+
+== Synopsis
+
+  pc cat <uri> <addr> [addr...]
+  pc set <uri> <addr=value> [addr=value...]
+  pc diagnose --address <addr> <uri> [options]
+  pc release <device-path>
+
+Examples:
+
+  pc cat modbus+tcp://127.0.0.1:502?unit=1 holding/1 holding/2@u16
+  pc set modbus+tcp://127.0.0.1:502?unit=1 holding/10@u16=1234
+  pc cat modbus+rtu:///dev/ttyUSB0?baud=9600&parity=N&data=8&stop=1&unit=1 input/0@f32be
+  pc set modbus+rtu:///dev/ttyUSB0?baud=19200&parity=E&data=8&stop=1&unit=1 holding/10@u16=1234
+  pc diagnose --address 7 mbus+rtu:///dev/ttyUSB0
+  pc release /dev/ttyUSB0
+
+== Protocol URI
+
+Modbus TCP and RTU are supported. Wired M‑Bus is also supported for basic reads.
+
+=== Modbus TCP URI
+
+  modbus+tcp://HOST:PORT?unit=UNIT&timeout=GoDuration
+
+Parameters:
+
+- unit: Modbus Unit ID (aka slave id). Default: 1.
+- timeout: overall request timeout per operation (Go duration, e.g. `2s`, `500ms`). Default: 3s.
+
+Examples:
+
+- modbus+tcp://192.168.1.50:502?unit=1
+- modbus+tcp://plc.local:1502?unit=10&timeout=2s
+
+=== M‑Bus (wired) URIs
+
+Serial (RTU-like transport):
+
+  mbus+rtu:///DEVICE?baud=2400&data=8&parity=E&stop=1&timeout=3s
+
+TCP (via M‑Bus TCP gateway):
+
+  mbus+tcp://HOST:PORT?timeout=3s
+
+=== M‑Bus address syntax
+
+General form:
+
+  mbus/PRIMARY[@MODE]
+
+- PRIMARY: decimal 1..250 (primary address)
+- MODE (optional):
+  - ud2 (default): request variable data
+  - ud1: request fixed data
+  - nke: link reset only
+
+Examples:
+
+  pc cat mbus+rtu:///dev/ttyUSB0?baud=2400&parity=E mbus/1@ud2
+  pc cat mbus+tcp://192.168.1.20:5000 mbus/12
+
+Notes:
+- Output is raw frame bytes; decoding of DIF/VIF can be added later without changing CLI.
+
+=== Modbus RTU URI
+
+  modbus+rtu:///DEVICE?baud=BAUD&data=DBITS&parity=N|E|O&stop=1|2&unit=UNIT&timeout=GoDuration
+
+Parameters:
+
+- DEVICE: serial port path (e.g., /dev/ttyUSB0, /dev/ttyS0, COM3)
+- baud: baud rate. Default: 9600
+- data: data bits. Default: 8
+- parity: parity: N (none), E (even), O (odd). Default: N
+- stop: stop bits: 1 or 2. Default: 1
+- unit: Modbus Unit ID (aka slave id). Default: 1
+- timeout: overall request timeout per operation (Go duration). Default: 3s
+
+Examples:
+
+- Linux/macOS: modbus+rtu:///dev/ttyUSB0?baud=9600&parity=N&data=8&stop=1&unit=1
+- Windows: modbus+rtu:///COM3?baud=19200&parity=E&data=8&stop=1&unit=10&timeout=2s
+
+=== Troubleshooting (Modbus RTU)
+
+- If you see "device not found" when opening a serial port, check the path and list available ports. The tool now includes the list of detected ports and may suggest the closest match.
+- On Linux, verify permissions: add your user to the dialout group and re-login, or run with sudo: `sudo usermod -a -G dialout $USER` then log out and back in.
+- Enable debug logs for more detail by setting PC_DEBUG=1, e.g.: `PC_DEBUG=1 pc cat <uri> ...`.
+- Common typo: the letter 'O' vs the number '0' in device names (e.g., /dev/ttyNSO vs /dev/ttyNS0).
+
+== Address syntax
+
+General form:
+
+  KIND/ADDR[:COUNT][@FORMAT]
+
+Where:
+
+- KIND is one of: `coil`, `discrete`, `holding`, `input`.
+- ADDR is a 0‑based register/bit address (decimal).
+- COUNT is optional read count (registers).
+If omitted, defaults to 1 where applicable.
+- FORMAT is optional decode hint for returned bytes.
+
+Notes:
+
+- Reads: implemented for `holding` and `input` registers.
+- Writes: implemented for single `holding` register (function 0x06) only.
+
+Supported FORMAT values (for decoding reads):
+
+- u16 — Unsigned 16-bit (1 register; big-endian within register)
+- s16 — Signed 16-bit (1 register)
+- u32 — Unsigned 32-bit, big-endian (2 registers; AB CD)
+- u32le — Unsigned 32-bit, little-endian (2 registers)
+- u32ws — Unsigned 32-bit, word-swapped (CD AB; 2 registers)
+- u32bs — Unsigned 32-bit, byte-swapped within each 16-bit word (BA DC; 2 registers)
+- u32wbs — Unsigned 32-bit, word+byte-swapped (DC BA; 2 registers)
+- s32 — Signed 32-bit, big-endian (2 registers)
+- s32le — Signed 32-bit, little-endian (2 registers)
+- s32ws — Signed 32-bit, word-swapped (CD AB; 2 registers)
+- f32be — 32-bit IEEE 754 float, big-endian (2 registers; AB CD)
+- f32le — 32-bit IEEE 754 float, little-endian (2 registers; DC BA)
+- f32ws — 32-bit IEEE 754 float, word-swapped (2 registers; CD AB)
+- f32bs — 32-bit IEEE 754 float, byte-swapped per 16-bit word (2 registers; BA DC)
+- f32wbs — 32-bit IEEE 754 float, word+byte-swapped (2 registers; DC BA)
+
+Aliases using explicit byte order labels (A=hi(R), B=lo(R), C=hi(R+1), D=lo(R+1)):
+- f32abcd → f32be (AB CD)
+- f32cdab → f32ws (CD AB)
+- f32badc → f32bs (BA DC)
+- f32dcba → f32wbs (DC BA; ≃ f32le)
+
+Notes:
+- 32-bit formats read two registers.
+When COUNT is omitted, the tool will automatically read 2 registers for these formats.
+- If FORMAT is omitted, raw bytes are returned (as hex in JSON), and `decoded` is empty.
+
+== Commands
+
+=== diagnose — discover device settings
+
+Automatically tests serial port configurations to find working settings for M-Bus devices.
+
+This command is invaluable when you don't know the correct serial port settings for an M-Bus device.
+It systematically tests different combinations of baud rate, parity, data bits, and stop bits to discover which configuration the device responds to.
+
+==== Usage
+
+  pc diagnose <mbus-uri> --address <addr> [options]
+
+Options:
+
+- `--address N` (required): M-Bus primary address (1-250) to test
+- `--baud N` (optional): Test only specific baud rate (skips testing other rates)
+- `--parity N|E|O` (optional): Test only specific parity (skips testing other parities)
+- `--data 7|8` (optional): Test only specific data bits (skips testing other data bits)
+- `--stop 1|2` (optional): Test only specific stop bits (skips testing other stop bits)
+- `--timeout DURATION` (optional): Timeout per test attempt (default: 1.5s)
+- `--json` (optional): Output results as JSON instead of human-readable format
+- `--quiet` or `-q` (optional): Suppress progress output to stderr
+
+==== Test Matrix
+
+By default, the tool tests all combinations of:
+
+- **Baud rates**: 2400, 9600, 4800, 1200, 600, 300 (ordered by likelihood)
+- **Parity**: E (even), N (none), O (odd)
+- **Data bits**: 8, 7
+- **Stop bits**: 1, 2
+
+This results in 72 test combinations (6 × 3 × 2 × 2).
+With the default 1.5s timeout, a full scan takes approximately 2 minutes.
+You can narrow the search using the optional flags.
+
+==== Port Locking
+
+**IMPORTANT**: The diagnostic command locks the serial port for the entire test duration.
+
+When you run `pc diagnose`, the tool:
+
+1. Opens the serial port **once** at the start
+2. **Locks the port** to prevent other applications from accessing it
+3. Reconfigures the port parameters for each test without closing it
+4. Releases the port only when all tests are complete or if you press Ctrl+C
+
+This design:
+- ✓ Prevents interference from other applications during testing
+- ✓ Is more efficient (no repeated open/close operations)
+- ✓ Provides more reliable test results
+- ⚠ Means other tools cannot access the port during diagnostics
+
+If you need to abort the diagnostic scan, press **Ctrl+C** to release the port immediately.
+
+==== Test Procedure
+
+For each configuration, the tool:
+
+1. Reconfigures the serial port parameters (baud, parity, data bits, stop bits)
+2. Sends **SND_NKE** (0x40) - link reset frame
+3. Checks for **E5 acknowledgment** from the device
+4. Sends **REQ_UD2** (0x7B) - request application data
+5. Checks for long frame response (0x68...)
+
+Success criteria:
+
+- **Full success**: E5 received AND data frame received
+- **Partial success**: E5 received but no data (indicates device is present but may need configuration)
+- **Failure**: No E5 acknowledgment (wrong settings or device not present)
+
+==== Output
+
+The tool provides:
+
+1. **Progress output** (stderr) - real-time test results with visual indicators (✓ ✗ ⚠)
+2. **Summary table** - working configurations sorted by performance
+3. **Recommended configuration** - best settings marked with ★ for EN 13757-2 standard (8E1)
+4. **Ready-to-use URI** - copy-paste URI for immediate use with `pc cat`
+5. **Detailed matrix** - visual grid showing test results for all parameter combinations
+6. **Troubleshooting hints** - actionable suggestions if no configuration works
+
+==== Examples
+
+Test all configurations for address 7:
+
+  pc diagnose mbus+rtu:///dev/ttyUSB0 --address 7
+
+Test only 2400 baud (faster when you know the baud rate):
+
+  pc diagnose mbus+rtu:///dev/ttyUSB0 --address 7 --baud 2400
+
+Test only EN 13757-2 standard configuration (8E1) at common baud rates:
+
+  pc diagnose mbus+rtu:///dev/ttyUSB0 --address 7 --parity E --data 8 --stop 1
+
+JSON output for scripting:
+
+  pc diagnose mbus+rtu:///dev/ttyUSB0 --address 7 --json --quiet
+
+Custom timeout for slow devices:
+
+  pc diagnose mbus+rtu:///dev/ttyUSB0 --address 7 --timeout 3s
+
+==== Typical Output
+
+----
+Testing M-Bus device at primary address 7 on /dev/ttyUSB0...
+Timeout: 1.5s per attempt
+Testing 72 configuration(s)
+
+⚠ The serial port will be LOCKED for the entire test duration.
+  Other applications cannot access /dev/ttyUSB0 until diagnostics complete.
+  Press Ctrl+C to abort and release the port.
+
+✓ Serial port /dev/ttyUSB0 locked for testing.
+
+[  1/72] Testing baud=2400 parity=E data=8 stop=1 ... ✓ SUCCESS (E5 ack + 47 bytes in 342ms)
+[  2/72] Testing baud=2400 parity=E data=8 stop=2 ... ✗ FAIL (no response, 1.5s)
+...
+
+═══════════════════════════════════════════════════════════════
+                    DIAGNOSTIC RESULTS
+═══════════════════════════════════════════════════════════════
+Device:          /dev/ttyUSB0
+Primary Address: 7
+Tests Run:       72
+Successful:      2
+
+✓ WORKING CONFIGURATIONS:
+
+┌───────┬────────┬──────┬──────┬──────────────┬──────────┐
+│ Baud  │ Parity │ Data │ Stop │ Data Length  │ Duration │
+├───────┼────────┼──────┼──────┼──────────────┼──────────┤
+│  2400 │   E    │   8  │   1  │    47 bytes  │  342ms   │ ★
+│  2400 │   N    │   8  │   1  │    47 bytes  │  356ms   │
+└───────┴────────┴──────┴──────┴──────────────┴──────────┘
+★ = EN 13757-2 standard configuration (8E1)
+
+RECOMMENDED CONFIGURATION:
+  baud=2400 parity=E data=8 stop=1
+
+READY-TO-USE URI:
+  mbus+rtu:///dev/ttyUSB0?baud=2400&parity=E&data=8&stop=1&address=7
+
+NEXT STEPS:
+  pc cat 'mbus+rtu:///dev/ttyUSB0?baud=2400&parity=E&data=8&stop=1&address=7' mbus/7@ud2
+
+✓ Serial port /dev/ttyUSB0 released.
+----
+
+==== Troubleshooting: Locked Port After Crash
+
+If `pc diagnose` crashes or is force-killed (kill -9), the serial port may remain locked. Symptoms:
+
+- Error: "device or resource busy"
+- Cannot open port in other applications
+- `lsof /dev/ttyUSB0` shows no processes but port still locked
+
+**Solution: Use the release command**
+
+  pc release /dev/ttyUSB0
+
+This will:
+1. Remove lock files from `/var/lock/`
+2. Open and close the port to clear OS locks
+3. Show any processes still using the port
+
+If processes are still holding the port, the command will show:
+
+  ⚠ Found 1 process(es) using the port:
+     pc       12345 user    3u   CHR  188,0      0t0  1234 /dev/ttyUSB0
+
+  To forcefully kill these processes, run:
+     sudo fuser -k /dev/ttyUSB0
+  WARNING: This will terminate the process(es) immediately!
+
+**Prevention**
+
+The diagnose command now includes signal handling:
+- Press **Ctrl+C** to safely abort and release the port
+- The port is automatically released on SIGTERM
+- Only SIGKILL (kill -9) can leave the port locked
+
+=== release — unlock serial port
+
+Manually release/unlock a serial port that was left locked by a crashed process.
+
+Usage:
+
+  pc release <device-path>
+
+Example:
+
+  pc release /dev/ttyUSB0
+  pc release /dev/ttyS1
+
+This command performs comprehensive diagnostics:
+1. Removes lock files from `/var/lock/` (may require sudo)
+2. Attempts to open and close the port to clear OS-level locks
+3. Checks for processes using the port with `lsof` or `fuser`
+4. If no processes found, tries again with `sudo` for elevated visibility
+5. Checks for systemd services (serial-getty, ModemManager) that may be using the port
+6. Shows kernel driver information and recent dmesg messages
+7. Provides specific commands to fix the issue
+
+**Success example:**
+
+----
+Attempting to release serial port: /dev/ttyUSB0
+
+1. Checking for lock files...
+   Removed: /var/lock/LCK..ttyUSB0
+   ✓ Removed 1 lock file(s)
+
+2. Attempting to open and close port...
+   ✓ Successfully opened and closed port
+
+3. Checking for processes using the port...
+   • No processes found using the port
+
+4. Checking systemd services...
+   • No systemd services found using the port
+
+5. Kernel driver information...
+   • No recent kernel messages
+   Driver: serial8250
+
+════════════════════════════════════════════════════════════
+✓ Port release successful!
+  /dev/ttyUSB0 should now be available for use.
+════════════════════════════════════════════════════════════
+----
+
+**Locked port example (with diagnostics):**
+
+----
+Attempting to release serial port: /dev/ttyS1
+
+1. Checking for lock files...
+   • No lock files found
+
+2. Attempting to open and close port...
+   ✗ Failed: cannot open: Serial port busy
+
+3. Checking for processes using the port...
+   • No processes found using the port
+
+   Trying with elevated privileges...
+   ✓ Found 1 process(es) with sudo:
+      pc  12345 user  3u  CHR 4,65  0t0  1234 /dev/ttyS1
+
+   To forcefully kill these processes, run:
+      sudo fuser -k /dev/ttyS1
+
+4. Checking systemd services...
+   ⚠ Found 1 active service(s) using the port:
+      serial-getty@ttyS1.service
+
+   To stop these services, run:
+      sudo systemctl stop serial-getty@ttyS1.service
+
+   To prevent auto-start on boot:
+      sudo systemctl disable serial-getty@ttyS1.service
+
+5. Kernel driver information...
+   Recent kernel messages:
+      [12345.678] ttyS1: detected caps 00000700 should be 00000100
+   Driver: serial8250
+
+════════════════════════════════════════════════════════════
+✓ Port release successful!
+  /dev/ttyS1 diagnostic information shown above.
+════════════════════════════════════════════════════════════
+----
+
+**When to use this command:**
+
+- After `pc diagnose` crashes or is force-killed
+- When you get "device busy" errors
+- Before running diagnostics if you suspect the port is locked
+- To clean up after any serial communication tool crashes
+
+=== cat — read values
+
+Reads one or more addresses and prints a JSON line per value.
+
+Example:
+
+  # TCP
+  pc cat modbus+tcp://127.0.0.1:502?unit=1 \
+    holding/1 holding/2:2 holding/10@u16 input/0@f32be
+
+  # RTU
+  pc cat modbus+rtu:///dev/ttyUSB0?baud=9600&parity=N&data=8&stop=1&unit=1 \
+    holding/1 input/0@f32be
+
+Each output line is a JSON object with fields:
+
+- spec: the original ReadSpec (kind/addr/count/format)
+- bytes: raw bytes
+- decoded: best‑effort decoded value when FORMAT was provided
+- ts: timestamp
+
+=== set — write value(s)
+
+Writes value(s) to the device.
+Currently supports a single holding register per pair.
+
+Syntax:
+
+  pc set <uri> <addr=value> [addr=value...]
+
+Example:
+
+  pc set modbus+tcp://127.0.0.1:502?unit=1 holding/10@u16=1234
+
+Notes:
+
+- Only `holding` is supported for writes now.
+- The value is interpreted according to the address FORMAT when provided. For single‑register write, u16 is expected.
+- You can provide arithmetic expressions as values; the expression is evaluated and the result is rounded to the nearest integer and range‑checked for u16 (0..65535).
+  - Examples (quote to avoid shell globbing):
+    - pc set <uri> 'holding/2@u16=4000*0.1'    # writes 400
+    - pc set <uri> "holding/10@u16=(3.3/4096)*1023" 
+
+
+== Building and development
+
+- Go modules are used.
+See `go.mod`.
+
+== Caveats and roadmap
+
+- Modbus TCP and RTU are implemented.
+- Reads: holding/input; Coils/discretes not yet implemented.
+- Writes: only 0x06 (single holding register).
+- Error handling and retries are basic.
+
+Planned:
+
+- Add coils/discretes read/write.
+- More decode/encode formats and endianness options.
+
+== License
+
+MIT License.
+See LICENSE.
+
+=== Developer workflow (automated releases)
+
+- Use Conventional Commits in PR titles/commit messages, e.g.:
+- feat: add coils read support
+- fix: prevent crash when no device selected
+- Optional: install a local git hook to validate commit messages:
+$ sh scripts/setup-git-hooks.sh
+- CI builds/tests run on pushes and PRs.
+- Releases are automated:
+1. Merge PRs normally using Conventional Commits.
+2. The release-please workflow will open a “Release PR” with the next version and CHANGELOG.
+3. Merge that Release PR; a GitHub Release and tag will be created automatically.
+4. The release-build workflow runs GoReleaser, which uploads pc_<os>_<arch>.tar.gz and SHA256SUMS.
+5. Users can install/upgrade via the one-liner install.sh.
+
+==== Publishing a patch release (step-by-step)
+
+If you need to publish a new patch (x.y.Z → x.y.(Z+1)) using the existing automation:
+
+1. Make only patch-safe changes and use Conventional Commits with a non-breaking type, e.g. `fix: ...`, `docs: ...`, `chore: ...`, `ci: ...`.
+2. Open a PR and get it merged into `main` (or push directly if appropriate).
+3. Wait ~1–2 minutes; the "release-please" GitHub Action will create or update a "Release PR" that bumps the patch version and includes a CHANGELOG.
+4. Review the Release PR content (version and notes).
+If all good, click Merge on the Release PR.
+5. Upon merge, a Git tag and GitHub Release are created automatically.
+6. The "release-build" workflow runs GoReleaser to build and upload archives and checksums to that Release.
+7. Verify the Release assets and that the install script works for the new version:
+- Install latest: `curl -fsSL https://raw.githubusercontent.com/pdat-cz/pc/main/install.sh | sudo bash`
+- Or a specific tag: `... | sudo bash -s -- vX.Y.Z`
+
+Notes:
+- If you push more commits before merging the Release PR, release-please will update it and may keep it open until you merge it.
+- If there are only chores/docs/ci changes, the version bump remains a patch by default.
+- No manual tagging is needed; let the automation handle it.

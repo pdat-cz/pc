@@ -1,0 +1,51 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: pc
+    main: ./cmd/pc            # adjust to your main package path
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+
+archives:
+  - id: default
+    builds: [pc]
+    format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+
+nfpms:
+  - id: deb
+    package_name: pc
+    builds: [pc]
+    vendor: p.d.a.
+    homepage: https://github.com/pda-dev/pc
+    maintainer: p.d.a. <info@pda.cz>
+    description: CLI tool for Modbus and M-Bus fieldbus protocols
+    license: MIT
+    formats: [deb]
+    bindir: /usr/local/bin
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: git
+
+release:
+  draft: false
+  prerelease: auto

@@ -1,0 +1,39 @@
+name: Release
+on:
+  push:
+    tags:
+      - "v*"     # triggers on vX.Y.Z tags
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"         # pin to GoReleaser v2 line
+          args: release --clean     # v2-compatible cleanup flag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to repo.pda.cz
+        run: |
+          for deb in dist/*.deb; do
+            echo "Uploading $deb"
+            curl --fail -X POST https://repo.pda.cz/api/v1/PDAT/main/upload \
+              -H "Authorization: Bearer ${{ secrets.PDA_REPO_TOKEN }}" \
+              -F "file=@${deb}"
+          done
